@@ -23,7 +23,7 @@ single look at the horizon recovered nominal α (5.3%).
 for a fixed horizon. That 18-point gain is bought with an 18-point increase in
 false positives. It is the same rejections, not more true ones.
 
-**CUPED is worth ~0.12% on this dataset, and the reason is coverage, not ρ.**
+**CUPED is worth ~0.13% on this dataset, and the reason is coverage, not ρ.**
 96.6% of post-period users have no pre-period history at all; among the 3.4%
 who do, ρ = 0.19. The literature quotes ρ ≈ 0.7 and roughly half the variance
 removed. Even at that ρ, applying CUPED to 3.4% of users would remove 1.7%.
@@ -77,7 +77,25 @@ showed power peaks near 20% of baseline and falls off in both directions, while
 `PREREG_M1_PEEKING.md` rather than folded in silently, because "we retuned
 until it worked" and "the method is robust" are different claims.
 
+**The naive session-level standard error loses coverage exactly where it
+matters.** At `add_to_cart`'s calibrated ICC of +0.188, A/A coverage of the
+nominal 95% CI falls to 91.5% and Type I error runs at 8.5% — the delta method
+holds 94.8%. At ICC = 0.5 naive coverage drops to 88.7%. Adding a correlation
+between a user's session count and their conversion propensity makes it worse
+still: 82.5% coverage at ICC = 0.5, a Type I error of 17.5%.
+
+**And you never needed to estimate an ICC.** The ratio of the two standard
+errors recovers the design effect directly, matching `1 + (n₀−1)·ρ` to within
+0.5% across the whole grid — provided n₀ is the session-weighted mean cluster
+size of *your* sample. Plugging in GA4's published n₀ = 2.90, which is measured
+on multi-session users only, overstates the design effect by up to 26%. The SE
+ratio needs neither number.
+
 ![False-positive rate by peeking frequency](figures/m1_peeking_fpr.png)
+
+![CUPED variance reduction and coverage](figures/m2_cuped.png)
+
+![Coverage of the naive session-level SE](figures/m3_coverage.png)
 
 | Schedule | Looks | Uncorrected | O'Brien–Fleming | mSPRT |
 |---|---|---|---|---|
@@ -113,8 +131,8 @@ we run it," and it is a blunt instrument.
 | | Module | Status |
 |---|---|---|
 | M1 | Peeking and sequential correction | complete |
-| M2 | CUPED variance reduction and its break conditions | scaffolded; calibration result registered |
-| M3 | Ratio metrics, delta method, user-level bootstrap | scaffolded; two-metric design registered |
+| M2 | CUPED variance reduction and its break conditions | complete |
+| M3 | Ratio metrics, delta method, user-level bootstrap | complete |
 | M4 | Interference and switchback designs | not started (optional) |
 | M5 | Dilution and triggered analysis as a collider problem | not started (optional) |
 
@@ -169,8 +187,28 @@ results/, figures/         outputs
 ```bash
 pip install -r requirements.txt
 pytest -q                  # 28 tests, all estimator-correctness checks
-python -m sim.run_m1
+python -m sim.run_m1 --calibrated
+python -m sim.run_m2 --calibrated
+python -m sim.run_m3 --calibrated
 ```
+
+### Registered predictions, and how they landed
+
+| Module | Prediction | Result |
+|---|---|---|
+| M1 P1 | Fixed horizon recovers nominal α | held (0.053) |
+| M1 P2–P3 | FPR rises monotonically; daily > 0.12 | held (0.227) |
+| M1 P4–P5 | Both corrections hold α ≤ 0.05 | held |
+| M1 P6 | Corrections cost power | held (0.24 → 0.21, 0.13) |
+| M2 P1 | Realized reduction tracks 1−ρ² within 2pp | held (max gap 0.0004) |
+| M2 P3 | Drift leaves variance reduction intact | held (0.360 at every drift) |
+| M2 P4 | Contamination biases the effect estimate | held (−15.9% and −29.8%, against a closed form of −ρc = −15% and −30%) |
+| M2 P5 | Exclusion changes the estimand | held |
+| M2 P7 | Effective reduction ≈ coverage × ρ² | held to 4 decimals |
+| M3 P1 | All estimators agree at ICC = 0 | held |
+| M3 P2–P3 | Naive SE understates; coverage falls in ICC | held |
+| M3 P4 | Delta and bootstrap hold coverage | held (agreement within 1%) |
+| M3 P5 | Coupling widens the gap | held |
 
 ---
 
@@ -195,6 +233,11 @@ python -m sim.run_m1
 - The CUPED coverage result is specific to anonymous, acquisition-heavy
   traffic over a holiday window; it is a claim about this user base, not about
   the method.
+- M3 part A uses 600 replicates per cell, so coverage estimates carry a Monte
+  Carlo SE of about 0.9pp. Individual cells move; the monotone trend is the
+  result, not any single number.
+- The bootstrap comparison (M3 part B) uses 40 replicates by design — it is an
+  agreement check between two correct estimators, not a coverage estimate.
 - The mSPRT power figures depend on a mixture SD with no principled default.
   The sweep is reported rather than a single tuned value.
 

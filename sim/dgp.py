@@ -117,8 +117,34 @@ def icc_feasible_floor(rate: float) -> float:
     return -rate / (1.0 - rate)
 
 
+_NEG_ICC_CACHE: dict[tuple, tuple[float, float]] = {}
+
+
+def _draw_counts(rng: np.random.Generator, n: int, sessions_mean: float,
+                 sessions_dispersion: float) -> np.ndarray:
+    """Per-user session counts: 1 + a non-negative draw.
+
+    The shift moves the mean, so the underlying draw targets
+    (sessions_mean - 1). BUGFIX 2026-08-15: both branches previously drew with
+    mean sessions_mean and then added 1.
+    """
+    var_target = sessions_mean * sessions_dispersion
+    shifted_mean = sessions_mean - 1.0
+    if shifted_mean < 0.0:
+        raise ValueError("mean sessions per user cannot be below 1")
+    if shifted_mean == 0.0:
+        return np.ones(n, dtype=np.int64)
+    if var_target > shifted_mean:
+        p_nb = shifted_mean / var_target
+        r_nb = shifted_mean * p_nb / (1.0 - p_nb)
+        return rng.negative_binomial(r_nb, p_nb, size=n) + 1
+    return rng.poisson(shifted_mean, size=n) + 1
+
+
 def _negative_icc_successes(rng: np.random.Generator, counts: np.ndarray,
-                            rate: float, icc: float) -> np.ndarray:
+                            rate: float, icc: float,
+                            sessions_mean: float,
+                            sessions_dispersion: float) -> np.ndarray:
     """Session outcomes with negative within-user dependence.
 
     Mechanism, chosen to match the substantive story rather than to hit a
@@ -163,20 +189,50 @@ def _negative_icc_successes(rng: np.random.Generator, counts: np.ndarray,
             p0 = min(p0, 0.999)
         return s
 
-    lo, hi = 0.0, 1.0
-    best = draw_calibrated(1.0)
-    if observed_icc(best, counts) > target:
-        return best  # even full suppression is not negative enough
+    # The (p0, supp) pair depends on the rate, the target, and the shape of
+    # the count distribution -- not on the particular draw. Calibrating on
+    # every call would make M3 intractable, so the pair is cached per
+    # (rate, target, mean count) and reused.
+    # Key on the count distribution's coarse shape only. Rounding the mean
+    # too finely (3dp) made almost every call a cache miss, so p0 was
+    # recalibrated per draw and its estimation noise leaked into the
+    # between-replicate variance of the ratio -- inflating the true sampling
+    # SD above its icc=0 value, which is backwards for negative dependence.
+    key = (round(rate, 6), round(target, 6), round(sessions_mean, 4),
+           round(sessions_dispersion, 4))
+    if key not in _NEG_ICC_CACHE:
+        # Calibrate on a large pilot with a dedicated, deterministically
+        # seeded generator. The bisection target is an ICC estimated on only
+        # the users with 2+ sessions (~25% here), so calibrating against the
+        # caller's own draw made `supp` depend on which draw warmed the cache,
+        # and that noise leaked into the between-replicate variance of the
+        # ratio. A fixed 400k-user pilot makes the pair deterministic.
+        pilot_rng = np.random.default_rng(90_210)
+        pilot = _draw_counts(pilot_rng, 400_000, sessions_mean,
+                             sessions_dispersion)
+        saved_counts, saved_rng = counts, rng
+        counts, rng = pilot, pilot_rng
+        lo, hi, chosen = 0.0, 1.0, 1.0
+        if observed_icc(draw_calibrated(1.0), counts) <= target:
+            for _ in range(10):
+                mid = 0.5 * (lo + hi)
+                if observed_icc(draw_calibrated(mid), counts) > target:
+                    lo = mid
+                else:
+                    hi = mid
+            chosen = hi
+        p0 = rate
+        for _ in range(6):
+            s = draw(p0, chosen)
+            realized = s.sum() / counts.sum()
+            if realized <= 0:
+                break
+            p0 = min(p0 * rate / realized, 0.999)
+        _NEG_ICC_CACHE[key] = (p0, chosen)
+        counts, rng = saved_counts, saved_rng
 
-    for _ in range(10):
-        mid = 0.5 * (lo + hi)
-        s = draw_calibrated(mid)
-        if observed_icc(s, counts) > target:
-            lo = mid
-        else:
-            hi = mid
-        best = s
-    return best
+    p0, supp = _NEG_ICC_CACHE[key]
+    return draw(p0, supp)
 
 
 def observed_icc(successes: np.ndarray, sessions: np.ndarray) -> float:
@@ -226,27 +282,7 @@ def ratio_metric_panel(
                       ("treat", p_control * (1.0 + lift))):
         n = n_users_per_arm
 
-        # Session counts: every user has at least one session, so the count is
-        # 1 + a non-negative draw. The shift moves the mean, so the underlying
-        # draw must target (sessions_mean - 1), not sessions_mean.
-        #
-        # BUGFIX 2026-08-15: both branches previously drew with mean
-        # sessions_mean and then added 1, producing a realized mean of
-        # sessions_mean + 1. Undetected because no test asserted the realized
-        # count distribution matched its target. See CHANGELOG_CONFIG.
-        var_target = sessions_mean * sessions_dispersion
-        shifted_mean = sessions_mean - 1.0
-        if shifted_mean < 0.0:
-            raise ValueError("mean sessions per user cannot be below 1")
-
-        if shifted_mean == 0.0:
-            counts = np.ones(n, dtype=np.int64)
-        elif var_target > shifted_mean:
-            p_nb = shifted_mean / var_target
-            r_nb = shifted_mean * p_nb / (1.0 - p_nb)
-            counts = rng.negative_binomial(r_nb, p_nb, size=n) + 1
-        else:
-            counts = rng.poisson(shifted_mean, size=n) + 1
+        counts = _draw_counts(rng, n, sessions_mean, sessions_dispersion)
 
         # User-level conversion propensity.
         #
@@ -277,7 +313,8 @@ def ratio_metric_panel(
                 rates[idx] = rates_sub[order]
 
         if icc < 0.0:
-            successes = _negative_icc_successes(rng, counts, rate, icc)
+            successes = _negative_icc_successes(
+                rng, counts, rate, icc, sessions_mean, sessions_dispersion)
         else:
             successes = rng.binomial(counts, rates)
 

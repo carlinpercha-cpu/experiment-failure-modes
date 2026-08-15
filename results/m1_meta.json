@@ -1,8 +1,8 @@
 {
   "n_sims": 10000,
-  "calibrated": false,
-  "calibration_source": "placeholder",
-  "baseline_conversion": 0.02,
-  "daily_users": 4000,
+  "calibrated": true,
+  "calibration_source": "ga4",
+  "baseline_conversion": 0.013461842839649126,
+  "daily_users": 3469,
   "seed": 20260815
 }

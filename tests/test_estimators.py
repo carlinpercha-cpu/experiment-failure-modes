@@ -298,3 +298,41 @@ def test_calibrated_iccs_are_positive_and_ordered():
     audit = cfg.OBSERVED["icc_estimator_audit"]
     assert audit["purchase"]["anova_fleiss_cuzick"] < 0 < \
         audit["purchase"]["pooled"], "the sign flip must stay on the record"
+
+
+def test_negative_icc_calibration_is_deterministic():
+    """The (p0, supp) pair must not depend on which draw warmed the cache.
+
+    It did: the pair was calibrated against the caller's own panel, and since
+    the bisection target is an ICC estimated on only the users with 2+
+    sessions, that noise leaked into the between-replicate variance of the
+    ratio -- inflating the true sampling SD at negative ICC above its icc=0
+    value, which is backwards. Now calibrated on a fixed 400k-user pilot.
+    """
+    pairs = []
+    for seed in (1, 2, 3):
+        dgp._NEG_ICC_CACHE.clear()
+        rng = np.random.default_rng(seed)
+        dgp.ratio_metric_panel(rng, 5_000, 1.333, 0.754, 0.0674, icc=-0.015)
+        pairs.append(list(dgp._NEG_ICC_CACHE.values())[0])
+    assert len({(round(p, 8), round(s, 8)) for p, s in pairs}) == 1, \
+        f"calibration varied across seeds: {pairs}"
+
+
+def test_design_effect_identity_holds():
+    """The module's recommendation, as an executable claim.
+
+    (delta SE / naive SE)^2 must equal 1 + (n0 - 1) * ICC, where n0 is the
+    SESSION-WEIGHTED mean cluster size sum(n^2)/sum(n) of the sample in hand.
+    This is why the SE ratio is preferable to plugging a published ICC into
+    the formula: it needs neither an ICC estimate nor the right n0.
+    """
+    rng = np.random.default_rng(307)
+    for icc in (0.10, 0.188, 0.30):
+        d = dgp.ratio_metric_panel(rng, 150_000, 1.333, 0.754, 0.0674, icc=icc)
+        s, n = d["control_successes"], d["control_sessions"].astype(float)
+        observed = (est.delta_method_se(s, n) / est.naive_session_se(s, n)) ** 2
+        n0 = (n ** 2).sum() / n.sum()
+        implied = 1 + (n0 - 1) * dgp.observed_icc(s, n.astype(np.int64))
+        assert abs(observed - implied) / implied < 0.03, \
+            f"icc={icc}: observed {observed:.4f} vs implied {implied:.4f}"
