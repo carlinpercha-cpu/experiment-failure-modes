@@ -92,3 +92,49 @@ the grid.
 variance reduction is approximately `coverage × ρ²` under the θ=0 fallback.
 If realized reduction departs materially from that product, the fallback is
 misimplemented.
+
+---
+
+## Amendment 2 — 2026-08-15, P8 registered post hoc
+
+**Registered after part D was run, and labelled as such.** The contamination
+result has a closed form, and the simulation recovers it. Registering it now
+converts part D from a demonstration ("bias increases with leakage") into a
+verified derivation.
+
+### Derivation
+
+With `X = X_raw + c·lift·T` and `Y = ρ·X_raw + √(1−ρ²)·ε + lift·T`, where `T`
+is the treatment indicator and `c` the share of the effect leaking into the
+covariate:
+
+```
+Var(X)   = 1 + c²·lift²/4
+Cov(Y,X) = ρ + c·lift²/4
+θ        = Cov(Y,X)/Var(X) ≈ ρ    (the correction terms are O(lift²))
+```
+
+The CUPED-adjusted treatment effect is then
+
+```
+E[Y_adj | T=1] − E[Y_adj | T=0] = lift − θ·c·lift = lift·(1 − θc)
+```
+
+so **relative bias = −θc ≈ −ρc**.
+
+### P8
+
+At ρ = 0.6, relative bias is −0.150 at c = 0.25 and −0.300 at c = 0.50.
+Tolerance: within 0.02 absolute of −θc, using the θ actually estimated rather
+than ρ.
+
+**Result:** −0.159 and −0.298 at 400 replicates. Held.
+
+**Status note.** P8 was derived after observing part D, not before, and is
+therefore a *post hoc* confirmation rather than a pre-registered prediction.
+It is recorded separately from the P1–P7 block for that reason. The
+distinction matters: a closed form fitted to an observed result is weaker
+evidence than one committed to in advance, even when the algebra is
+independent of the data.
+
+Enforced by `test_contamination_bias_matches_closed_form`.

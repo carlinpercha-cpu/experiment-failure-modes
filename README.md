@@ -202,7 +202,8 @@ python -m sim.run_m3 --calibrated
 | M1 P6 | Corrections cost power | held (0.24 → 0.21, 0.13) |
 | M2 P1 | Realized reduction tracks 1−ρ² within 2pp | held (max gap 0.0004) |
 | M2 P3 | Drift leaves variance reduction intact | held (0.360 at every drift) |
-| M2 P4 | Contamination biases the effect estimate | held (−15.9% and −29.8%, against a closed form of −ρc = −15% and −30%) |
+| M2 P4 | Contamination biases the effect estimate | held |
+| M2 P8 | Bias follows the closed form `lift·(1−θc)` | held (−15.9% and −29.8% vs −15% and −30% predicted) |
 | M2 P5 | Exclusion changes the estimand | held |
 | M2 P7 | Effective reduction ≈ coverage × ρ² | held to 4 decimals |
 | M3 P1 | All estimators agree at ICC = 0 | held |

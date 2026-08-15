@@ -336,3 +336,44 @@ def test_design_effect_identity_holds():
         implied = 1 + (n0 - 1) * dgp.observed_icc(s, n.astype(np.int64))
         assert abs(observed - implied) / implied < 0.03, \
             f"icc={icc}: observed {observed:.4f} vs implied {implied:.4f}"
+
+
+@pytest.mark.parametrize("c", [0.25, 0.50])
+def test_contamination_bias_matches_closed_form(c):
+    """M2 P8: a covariate carrying share c of the treatment effect biases the
+    CUPED estimate to lift*(1 - theta*c), i.e. relative bias -theta*c.
+
+    Registered post hoc; see PREREG_M2_CUPED Amendment 2.
+    """
+    rng = np.random.default_rng(401)
+    rho, lift = 0.6, 0.02
+
+    effects, thetas = [], []
+    for _ in range(60):
+        d = dgp.cuped_panel(rng, n_per_arm=40_000, rho=rho,
+                            true_lift=lift, contamination=c)
+        theta = est.cuped_theta(d["y"], d["x"])
+        y_adj, keep = est.cuped_adjust(d["y"], d["x"], theta)
+        t = d["treat"][keep]
+        effects.append(y_adj[t].mean() - y_adj[~t].mean())
+        thetas.append(theta)
+
+    relative_bias = (np.mean(effects) - lift) / lift
+    predicted = -np.mean(thetas) * c
+    assert abs(relative_bias - predicted) < 0.02, \
+        f"c={c}: observed {relative_bias:.4f}, closed form {predicted:.4f}"
+
+
+def test_contamination_leaves_variance_reduction_intact():
+    """The failure is silent: variance still falls while the estimate moves."""
+    rng = np.random.default_rng(403)
+    reductions = []
+    for c in (0.0, 0.5):
+        d = dgp.cuped_panel(rng, n_per_arm=40_000, rho=0.6,
+                            true_lift=0.02, contamination=c)
+        theta = est.cuped_theta(d["y"], d["x"])
+        y_adj, keep = est.cuped_adjust(d["y"], d["x"], theta)
+        reductions.append(1 - np.var(y_adj, ddof=1) /
+                          np.var(d["y"][keep], ddof=1))
+    assert abs(reductions[0] - reductions[1]) < 0.01, \
+        "contamination should not show up in the variance reduction"

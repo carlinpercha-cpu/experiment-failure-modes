@@ -82,6 +82,13 @@ CHANGELOG_CONFIG = [
                    "magnitude, not sign. All prior estimates retained in "
                    "observed_params.json under icc_estimator_audit. See "
                    "PREREG_M3 Amendment 3."),
+    ("2026-08-15", "M2 P8 registered POST HOC. Contamination bias has the "
+                   "closed form lift*(1 - theta*c), giving relative bias "
+                   "-theta*c; observed -0.159 and -0.298 at c=0.25 and 0.50 "
+                   "against -0.150 and -0.300 predicted. Derived after "
+                   "observing part D, so recorded separately from the P1-P7 "
+                   "block and labelled post hoc rather than pre-registered. "
+                   "See PREREG_M2 Amendment 2."),
     ("2026-08-15", "BUGFIX in sim/dgp.py ratio_metric_panel. Both session-"
                    "count branches drew with mean sessions_mean and then "
                    "added 1, giving a realized mean of sessions_mean + 1. "
