@@ -1,13 +1,47 @@
 {
-  "source": "placeholder",
-  "note": "Overwritten by calibration/ga4_params.py after the BigQuery pass. Values below are plausible defaults so the simulation runs end-to-end before calibration; no figure produced from them may be described as calibrated.",
-  "written_at": null,
-  "bigquery_bytes_scanned": null,
+  "source": "ga4",
+  "note": "Measured on bigquery-public-data.ga4_obfuscated_sample_ecommerce, events_20201101 to events_20210131. Pre period 20201101-20201215, post period 20201216-20210131. See ga4_params.sql. ICC estimator of record is the size-stratified moment estimator (Block 4); the Fleiss-Cuzick ANOVA values are retained under icc_estimator_audit because they are biased and the correction must stay auditable.",
+  "written_at": "2026-08-15T21:10:00+00:00",
+  "bigquery_bytes_scanned": 4745450000,
 
-  "baseline_session_conversion": 0.0200,
-  "daily_users": 4000,
-  "sessions_per_user_mean": 1.60,
-  "sessions_per_user_dispersion": 1.20,
-  "session_conversion_icc": 0.10,
-  "cuped_pre_post_correlation": 0.40
+  "baseline_session_conversion": 0.013461842839649126,
+  "daily_users": 3469,
+  "sessions_per_user_mean": 1.3330507784448986,
+  "sessions_per_user_dispersion": 0.754490091003549,
+  "mean_cluster_size_n0": 2.8996294210281017,
+  "n_multisession_users": 47364,
+
+  "primary_metric": "add_to_cart",
+  "primary_metric_rate": 0.06741712113820546,
+  "session_conversion_icc": 0.1880,
+  "primary_metric_design_effect": 1.357,
+
+  "contrast_metric": "purchase",
+  "contrast_metric_rate": 0.02745032365169398,
+  "contrast_metric_icc": 0.0390,
+  "contrast_metric_design_effect": 1.074,
+
+  "cuped_pre_post_correlation": 0.18962277127646457,
+  "no_preperiod_share": 0.9658400593217922,
+  "n_users_both_periods": 4791,
+
+  "icc_estimator_audit": {
+    "method_of_record": "size-stratified moment estimator, precision-weighted over n=2,3,4",
+    "add_to_cart": {
+      "anova_fleiss_cuzick": 0.1263,
+      "closed_form_n2": 0.1849,
+      "stratified": {"2": 0.1849, "3": 0.1934, "4": 0.1862},
+      "pooled": 0.1880,
+      "stratum_drift": "flat; three strata within one SE"
+    },
+    "purchase": {
+      "anova_fleiss_cuzick": -0.03946,
+      "closed_form_n2": 0.0316,
+      "stratified": {"2": 0.0316, "3": 0.0401, "4": 0.0474},
+      "pooled": 0.0390,
+      "stratum_drift": "monotone increasing, ~2.5 SE across n=2..4"
+    },
+    "why_anova_was_wrong": "Per-session conversion rate rises steeply with session count (purchase: 0.0048 at n=1 to 0.042 at n=8). When cluster size correlates with cluster rate, msw is dominated by large high-rate clusters while msb is deflated by the mass of small low-rate clusters, biasing the ANOVA ICC downward. A simulation with sessions INDEPENDENT within user (true ICC = 0) but with the observed size-rate structure returns ANOVA ICC of -0.069 to -0.083, more negative than the -0.0395 actually observed.",
+    "rate_by_session_count_purchase": {"1": 0.0048386, "2": 0.0158789, "3": 0.0293599, "4": 0.0362281, "5": 0.0389153, "6": 0.0418686, "7": 0.0388297, "8plus": 0.0419706}
+  }
 }

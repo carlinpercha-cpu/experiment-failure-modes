@@ -120,3 +120,66 @@ SELECT
   SAFE_DIVIDE(COUNTIF(pre.user_pseudo_id IS NULL), COUNT(*))
     AS no_preperiod_share
 FROM post LEFT JOIN pre USING (user_pseudo_id);
+
+-- ===========================================================================
+-- Block 4: ICC ESTIMATOR OF RECORD -- size-stratified moment estimator.
+--
+-- Supersedes the ANOVA estimator in Block 1, which is biased downward when
+-- cluster size correlates with cluster rate. It does here, steeply: per-session
+-- purchase rate runs 0.0048 at n=1 to 0.042 at n=8, and the ANOVA estimator
+-- consequently reported -0.0395 for a metric whose true ICC is +0.039.
+--
+-- Holding n fixed removes the confound. For exchangeable binary sessions,
+--     Var(s) = n p (1-p) [1 + (n-1) rho]
+-- so per stratum:
+--     p   = mean(s) / n
+--     rho = (var(s) / (n p (1-p)) - 1) / (n - 1)
+-- Pool across strata weighted by 1 / SE^2, SE ~= sqrt(2 / (n (n-1) k)).
+-- ===========================================================================
+WITH sessions AS (
+  SELECT
+    user_pseudo_id,
+    (SELECT value.int_value FROM UNNEST(event_params)
+     WHERE key = 'ga_session_id')            AS session_id,
+    MAX(IF(event_name = 'purchase', 1, 0))    AS purch,
+    MAX(IF(event_name = 'add_to_cart', 1, 0)) AS atc
+  FROM `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*`
+  WHERE _TABLE_SUFFIX BETWEEN '20201101' AND '20210131'
+  GROUP BY user_pseudo_id, session_id
+  HAVING session_id IS NOT NULL
+),
+per_user AS (
+  SELECT user_pseudo_id, COUNT(*) AS n, SUM(purch) AS sp, SUM(atc) AS sa
+  FROM sessions GROUP BY user_pseudo_id
+)
+SELECT n, COUNT(*) AS k_users,
+       AVG(sp) AS mean_purch, VAR_SAMP(sp) AS var_purch,
+       AVG(sa) AS mean_atc,   VAR_SAMP(sa) AS var_atc
+FROM per_user
+WHERE n BETWEEN 2 AND 4
+GROUP BY n ORDER BY n;
+
+-- ===========================================================================
+-- Block 5: DIAGNOSTIC -- per-session conversion rate by session count.
+-- This is the query that identified the ANOVA bias. Run it for any metric
+-- before trusting a pooled ICC: a rate that varies with n means the pooled
+-- estimate is confounded.
+-- ===========================================================================
+WITH sessions AS (
+  SELECT
+    user_pseudo_id,
+    (SELECT value.int_value FROM UNNEST(event_params)
+     WHERE key = 'ga_session_id')          AS session_id,
+    MAX(IF(event_name = 'purchase', 1, 0)) AS converted
+  FROM `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*`
+  WHERE _TABLE_SUFFIX BETWEEN '20201101' AND '20210131'
+  GROUP BY user_pseudo_id, session_id
+  HAVING session_id IS NOT NULL
+),
+per_user AS (
+  SELECT user_pseudo_id, COUNT(*) AS n, SUM(converted) AS s
+  FROM sessions GROUP BY user_pseudo_id
+)
+SELECT LEAST(n, 8) AS n_sessions, COUNT(*) AS users,
+       SUM(s) / SUM(n) AS rate_per_session
+FROM per_user GROUP BY 1 ORDER BY 1;

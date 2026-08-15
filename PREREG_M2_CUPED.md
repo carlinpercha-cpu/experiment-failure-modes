@@ -58,3 +58,37 @@ The DGP uses a continuous, normally distributed outcome. Real product metrics
 are heavy-tailed (revenue) or binary (conversion), where CUPED's behaviour
 differs — in particular, θ estimated on a winsorized outcome is not θ estimated
 on the raw outcome. Not swept; stated in the README.
+
+---
+
+## Amendment 1 — 2026-08-15, after calibration
+
+**`no_preperiod_share` is promoted from a break condition to the module's
+primary result.** GA4 calibration measured:
+
+- Share of post-period users with **no** pre-period history: **96.6%**
+- Pre/post correlation among the 3.4% who have one: **ρ = 0.19**
+- Variance reduction where CUPED can be applied: **3.6%** (= ρ²)
+- Effective portfolio-wide reduction under the θ=0 fallback: **≈ 0.12%**
+
+The literature quotes ρ ≈ 0.7 and roughly half the variance removed. The gap
+here is driven overwhelmingly by *coverage*, not by ρ: even at the advertised
+ρ = 0.7, applying CUPED to 3.4% of users would remove about 1.7% of variance.
+
+**Registered scope condition.** This is an anonymous e-commerce storefront over
+a holiday period, with mean 1.33 sessions per user and heavy new-visitor
+traffic. The pre/post window split (45 days pre, 47 days post) inflates the
+no-history share relative to a longer lookback. The claim is *not* that CUPED
+does not work. It is that CUPED's value is a property of the user base's
+history depth rather than of the method, and that a metric-level ρ reported
+without its coverage denominator overstates it. A logged-in product with
+returning users is exactly where the advertised numbers hold.
+
+**Grid change.** The observed 0.966 is added as a grid point, and 0.8 is added
+to fill the gap. A config assertion requires the observed value to remain in
+the grid.
+
+**Additional prediction registered (P7).** Across the coverage grid, effective
+variance reduction is approximately `coverage × ρ²` under the θ=0 fallback.
+If realized reduction departs materially from that product, the fallback is
+misimplemented.

@@ -158,3 +158,143 @@ def test_dgp_hits_target_rate_and_icc():
     msw = np.sum(s * (1 - s / n)) / (n.sum() - len(n))
     icc_hat = 1.0 - msw / (p * (1 - p))
     assert abs(icc_hat - target) < 0.05, f"realized ICC {icc_hat:.3f}"
+
+
+# ---------------------------------------------------------------------------
+# Added 2026-08-15 with the calibration pass
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("mean,disp", [(1.333, 0.754), (2.5, 1.6), (1.0, 0.5)])
+def test_session_counts_match_target_moments(mean, disp):
+    """Realized mean session count must match the target.
+
+    This is the test that was missing when ratio_metric_panel drew with mean
+    `sessions_mean` and then added 1, giving a realized mean of
+    `sessions_mean + 1`. The bug survived because the existing tests checked
+    the conversion rate and the ICC but never the count distribution.
+    """
+    rng = np.random.default_rng(101)
+    d = dgp.ratio_metric_panel(rng, 200_000, mean, disp, 0.05, icc=0.0)
+    realized = d["control_sessions"].mean()
+    assert abs(realized - mean) < 0.02, \
+        f"target mean {mean}, realized {realized:.4f}"
+    assert d["control_sessions"].min() >= 1, "every user needs >= 1 session"
+
+
+def test_calibration_is_loaded():
+    """The repo should now be running on measured, not invented, parameters."""
+    assert cfg.CALIBRATED_MODE, "expected observed_params.json source=ga4"
+    assert cfg.OBSERVED["bigquery_bytes_scanned"] is not None
+
+
+def test_observed_values_are_pinned_to_grids():
+    """A calibrated value that is not a grid point is a value nothing uses."""
+    assert round(cfg.OBSERVED_ICC, 4) in cfg.M3["icc_grid"]
+    assert round(cfg.CONTRAST_METRIC_ICC, 4) in cfg.M3["icc_grid"]
+    assert round(cfg.NO_PREPERIOD_SHARE, 3) in cfg.M2["no_preperiod_share"]
+
+
+def _anova_icc(successes, sessions):
+    """Fleiss-Cuzick ANOVA ICC, matching the estimator used in the SQL."""
+    m = sessions >= 2
+    s, n = successes[m].astype(float), sessions[m].astype(float)
+    k, bigN = len(n), n.sum()
+    p = s.sum() / bigN
+    msb = np.sum(n * (s / n - p) ** 2) / (k - 1)
+    msw = np.sum(s * (1 - s / n)) / (bigN - k)
+    n0 = (bigN - np.sum(n ** 2) / bigN) / (k - 1)
+    return (msb - msw) / (msb + (n0 - 1) * msw)
+
+
+@pytest.mark.parametrize("target", [0.05, 0.1263, 0.30])
+def test_positive_icc_is_recovered(target):
+    rng = np.random.default_rng(103)
+    d = dgp.ratio_metric_panel(rng, 150_000, 3.0, 2.0, 0.0674, icc=target)
+    icc_hat = _anova_icc(d["control_successes"], d["control_sessions"])
+    assert abs(icc_hat - target) < 0.03, f"target {target}, realized {icc_hat:.4f}"
+
+
+def test_negative_icc_floor_is_enforced():
+    """Requests below the feasibility floor must be clamped, not fabricated.
+
+    For exchangeable binary sessions, corr >= -p/(1-p). The GA4 purchase
+    estimate (-0.0395 at p=0.0275) sits below its floor of -0.0282, so it
+    cannot be a pure within-user correlation and the DGP must not pretend to
+    reproduce it.
+    """
+    rate = 0.0275
+    floor = dgp.icc_feasible_floor(rate)
+    assert floor == pytest.approx(-0.0283, abs=1e-3)
+
+    rng = np.random.default_rng(107)
+    d = dgp.ratio_metric_panel(rng, 120_000, 3.0, 2.0, rate, icc=-0.50)
+    realized = dgp.observed_icc(d["control_successes"], d["control_sessions"])
+    assert realized >= floor - 0.01, \
+        f"realized {realized:.4f} below feasibility floor {floor:.4f}"
+    assert realized < 0.0
+
+
+def test_negative_icc_preserves_marginal_rate():
+    rng = np.random.default_rng(113)
+    rate = 0.0275
+    d = dgp.ratio_metric_panel(rng, 120_000, 3.0, 2.0, rate, icc=-0.02)
+    s, n = d["control_successes"], d["control_sessions"]
+    assert abs(s.sum() / n.sum() - rate) / rate < 0.10, "marginal rate drifted"
+    assert dgp.observed_icc(s, n) < 0.02
+
+
+def test_naive_overstates_when_icc_negative():
+    """The finding that flips M3: with negative ICC the naive session-level SE
+    is conservative, not anti-conservative."""
+    rng = np.random.default_rng(109)
+    d = dgp.ratio_metric_panel(rng, 120_000, 3.0, 2.0, 0.0275, icc=-0.025)
+    s, n = d["control_successes"], d["control_sessions"]
+    assert est.delta_method_se(s, n) < est.naive_session_se(s, n)
+
+
+
+def test_anova_icc_is_biased_by_size_rate_correlation():
+    """The estimator finding, as an executable claim.
+
+    Sessions are INDEPENDENT within user (true ICC = 0), but per-session rate
+    rises with session count, matching the observed GA4 structure. The
+    Fleiss-Cuzick ANOVA estimator must return a materially negative value --
+    which is why the -0.0395 measured on purchase was an artifact rather than
+    evidence of negative dependence.
+    """
+    rng = np.random.default_rng(211)
+    sizes = [1, 2, 3, 4, 5, 6, 7, 8]
+    users = [222790, 29536, 8322, 3823, 2102, 1238, 791, 1552]
+    rates = [0.00484, 0.01588, 0.02936, 0.03623, 0.03892,
+             0.04187, 0.03883, 0.04197]
+
+    counts = np.concatenate([np.full(u, n) for n, u in zip(sizes, users)])
+    p = np.concatenate([np.full(u, r) for u, r in zip(users, rates)])
+    successes = rng.binomial(counts, p)
+
+    icc_hat = dgp.observed_icc(successes, counts)
+    assert icc_hat < -0.03, \
+        f"expected substantial downward bias, got {icc_hat:.4f}"
+
+
+def test_stratified_icc_is_unbiased_under_the_same_structure():
+    """The corrected estimator: hold cluster size fixed, and the size-rate
+    confound cannot operate. Must recover ~0 where ANOVA reports ~-0.07."""
+    rng = np.random.default_rng(213)
+    est_by_n = []
+    for n, k, rate in ((2, 60_000, 0.01588), (3, 40_000, 0.02936),
+                       (4, 30_000, 0.03623)):
+        s = rng.binomial(n, rate, size=k)
+        p_hat = s.mean() / n
+        rho = (s.var(ddof=1) / (n * p_hat * (1 - p_hat)) - 1) / (n - 1)
+        est_by_n.append(rho)
+    assert all(abs(r) < 0.03 for r in est_by_n), \
+        f"stratified estimator should be near zero, got {est_by_n}"
+
+
+def test_calibrated_iccs_are_positive_and_ordered():
+    assert cfg.OBSERVED_ICC > cfg.CONTRAST_METRIC_ICC > 0
+    audit = cfg.OBSERVED["icc_estimator_audit"]
+    assert audit["purchase"]["anova_fleiss_cuzick"] < 0 < \
+        audit["purchase"]["pooled"], "the sign flip must stay on the record"
