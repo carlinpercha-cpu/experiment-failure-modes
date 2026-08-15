@@ -1,0 +1,8 @@
+{
+  "n_sims": 10000,
+  "calibrated": false,
+  "calibration_source": "placeholder",
+  "baseline_conversion": 0.02,
+  "daily_users": 4000,
+  "seed": 20260815
+}

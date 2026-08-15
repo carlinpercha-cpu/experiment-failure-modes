@@ -1,0 +1,13 @@
+{
+  "source": "placeholder",
+  "note": "Overwritten by calibration/ga4_params.py after the BigQuery pass. Values below are plausible defaults so the simulation runs end-to-end before calibration; no figure produced from them may be described as calibrated.",
+  "written_at": null,
+  "bigquery_bytes_scanned": null,
+
+  "baseline_session_conversion": 0.0200,
+  "daily_users": 4000,
+  "sessions_per_user_mean": 1.60,
+  "sessions_per_user_dispersion": 1.20,
+  "session_conversion_icc": 0.10,
+  "cuped_pre_post_correlation": 0.40
+}

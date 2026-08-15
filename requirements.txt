@@ -1,0 +1,7 @@
+numpy>=1.26
+scipy>=1.11
+pandas>=2.0
+matplotlib>=3.8
+pytest>=7.4
+# optional, only for calibration/ga4_params.py --from-bigquery
+# google-cloud-bigquery>=3.17
