@@ -59,8 +59,8 @@ demonstrably varies with engagement depth for one of the two metrics
 (purchase: +0.032 → +0.047 across n = 2, 3, 4).
 
 **Registered after correction:** `add_to_cart` ρ = +0.192 (flat across strata),
-design effect 1.365, naive SE **17.0% too narrow**. `purchase` ρ = +0.031,
-design effect 1.059, naive SE **2.9% too narrow**. Both cluster positively; the
+design effect 1.365, naive SE **8.5% too narrow** on a panel like this. `purchase` ρ = +0.031,
+design effect 1.059, naive SE **1.4% too narrow** on a panel like this. Both cluster positively; the
 contrast is a 6× gap in magnitude on the same users.
 
 **A level shift moves a rate and leaves a correlation alone.** Re-measuring on
