@@ -1,45 +1,62 @@
 {
   "source": "ga4",
-  "note": "Measured on bigquery-public-data.ga4_obfuscated_sample_ecommerce, events_20201101 to events_20210131. Pre period 20201101-20201215, post period 20201216-20210131. See ga4_params.sql. ICC estimator of record is the size-stratified moment estimator (Block 4); the Fleiss-Cuzick ANOVA values are retained under icc_estimator_audit because they are biased and the correction must stay auditable.",
-  "written_at": "2026-08-15T21:10:00+00:00",
-  "bigquery_bytes_scanned": 4745450000,
+  "note": "Measured on bigquery-public-data.ga4_obfuscated_sample_ecommerce, CLEAN WINDOW events_20201201 to events_20210131. The full 92-day window (from 20201101) is contaminated: add_to_cart did not fire reliably in November 2020 (66% of November purchases have no cart event vs 17% after; device-uniform step change at the month boundary). See ga4-product-analytics/docs/instrumentation_break.md. Pooled-window values retained under window_audit. ICC estimator of record is the size-stratified moment estimator; Fleiss-Cuzick ANOVA values retained under icc_estimator_audit because they are biased and the correction must stay auditable.",
+  "written_at": "2026-08-15T23:30:00+00:00",
+  "bigquery_bytes_scanned": 6643630000,
+  "window": {"start": "2020-12-01", "end": "2021-01-31", "days": 62},
 
-  "baseline_session_conversion": 0.013461842839649126,
-  "daily_users": 3469,
-  "sessions_per_user_mean": 1.3330507784448986,
-  "sessions_per_user_dispersion": 0.754490091003549,
+  "baseline_session_conversion": 0.01281,
+  "daily_users": 3632,
+  "sessions_per_user_mean": 1.2879,
+  "sessions_per_user_dispersion": 0.626,
   "mean_cluster_size_n0": 2.8996294210281017,
-  "n_multisession_users": 47364,
+  "n_multisession_users": 27430,
 
   "primary_metric": "add_to_cart",
-  "primary_metric_rate": 0.06741712113820546,
-  "session_conversion_icc": 0.1880,
-  "primary_metric_design_effect": 1.357,
+  "primary_metric_rate": 0.05161,
+  "session_conversion_icc": 0.1921,
+  "primary_metric_design_effect": 1.365,
 
   "contrast_metric": "purchase",
-  "contrast_metric_rate": 0.02745032365169398,
-  "contrast_metric_icc": 0.0390,
-  "contrast_metric_design_effect": 1.074,
+  "contrast_metric_rate": 0.01281,
+  "contrast_metric_icc": 0.0312,
+  "contrast_metric_design_effect": 1.059,
 
   "cuped_pre_post_correlation": 0.18962277127646457,
   "no_preperiod_share": 0.9658400593217922,
   "n_users_both_periods": 4791,
 
+  "window_audit": {
+    "issue": "add_to_cart instrumentation break before 2020-12-01",
+    "evidence": "Share of purchases from users with no cart event anywhere: Nov 66.5/64.6/63.2% (desktop/mobile/tablet), Dec 16.6/18.3/13.6%, Jan 17.7/18.3/20.7%. Device-uniform step at a month boundary; the same buyers have view_item events, so sessions are not under-tracked generally.",
+    "pooled_window_values": {
+      "window": "2020-11-01 to 2021-01-31",
+      "baseline_session_conversion": 0.013461842839649126,
+      "daily_users": 3469,
+      "sessions_per_user_mean": 1.3330507784448986,
+      "sessions_per_user_dispersion": 0.754490091003549,
+      "primary_metric_rate": 0.06741712113820546,
+      "session_conversion_icc": 0.1880,
+      "contrast_metric_rate": 0.02745032365169398,
+      "contrast_metric_icc": 0.0390
+    },
+    "effect_of_restriction": "add_to_cart rate -23.5%, purchase rate -4.8%, daily users +4.7%, sessions/user -3.4%, dispersion -17.0%. Both ICCs moved less than one standard error (+0.004 and -0.008), confirming that within-user correlation is robust to a level shift while the rate is not. No M3 conclusion depends on the difference; the amendment is because a known-contaminated rate should not sit in a calibration file.",
+    "cuped_parameters_note": "cuped_pre_post_correlation and no_preperiod_share are computed from a pre/post split that requires the November data as the pre period, so they are NOT recomputable on the clean window and are carried over unchanged. They derive from event counts rather than add_to_cart specifically, so the break does not contaminate them."
+  },
+
   "icc_estimator_audit": {
     "method_of_record": "size-stratified moment estimator, precision-weighted over n=2,3,4",
     "add_to_cart": {
-      "anova_fleiss_cuzick": 0.1263,
-      "closed_form_n2": 0.1849,
-      "stratified": {"2": 0.1849, "3": 0.1934, "4": 0.1862},
-      "pooled": 0.1880,
+      "anova_fleiss_cuzick_pooled_window": 0.1263,
+      "stratified_clean_window": {"2": 0.1809, "3": 0.2005, "4": 0.1976},
+      "pooled": 0.1921,
       "stratum_drift": "flat; three strata within one SE"
     },
     "purchase": {
-      "anova_fleiss_cuzick": -0.03946,
-      "closed_form_n2": 0.0316,
-      "stratified": {"2": 0.0316, "3": 0.0401, "4": 0.0474},
-      "pooled": 0.0390,
-      "stratum_drift": "monotone increasing, ~2.5 SE across n=2..4"
+      "anova_fleiss_cuzick_pooled_window": -0.03946,
+      "stratified_clean_window": {"2": 0.0190, "3": 0.0441, "4": 0.0328},
+      "pooled": 0.0312,
+      "stratum_drift": "non-monotone on the clean window; n=3 highest"
     },
     "why_anova_was_wrong": "Per-session conversion rate rises steeply with session count (purchase: 0.0048 at n=1 to 0.042 at n=8). When cluster size correlates with cluster rate, msw is dominated by large high-rate clusters while msb is deflated by the mass of small low-rate clusters, biasing the ANOVA ICC downward. A simulation with sessions INDEPENDENT within user (true ICC = 0) but with the observed size-rate structure returns ANOVA ICC of -0.069 to -0.083, more negative than the -0.0395 actually observed.",
     "rate_by_session_count_purchase": {"1": 0.0048386, "2": 0.0158789, "3": 0.0293599, "4": 0.0362281, "5": 0.0389153, "6": 0.0418686, "7": 0.0388297, "8plus": 0.0419706}

@@ -296,7 +296,7 @@ def test_stratified_icc_is_unbiased_under_the_same_structure():
 def test_calibrated_iccs_are_positive_and_ordered():
     assert cfg.OBSERVED_ICC > cfg.CONTRAST_METRIC_ICC > 0
     audit = cfg.OBSERVED["icc_estimator_audit"]
-    assert audit["purchase"]["anova_fleiss_cuzick"] < 0 < \
+    assert audit["purchase"]["anova_fleiss_cuzick_pooled_window"] < 0 < \
         audit["purchase"]["pooled"], "the sign flip must stay on the record"
 
 
@@ -377,3 +377,27 @@ def test_contamination_leaves_variance_reduction_intact():
                           np.var(d["y"][keep], ddof=1))
     assert abs(reductions[0] - reductions[1]) < 0.01, \
         "contamination should not show up in the variance reduction"
+
+
+
+def test_window_audit_is_present_and_honest():
+    """The contaminated pooled-window values must stay on the record.
+
+    The calibration was re-measured on 2020-12-01 onward after an add_to_cart
+    instrumentation break was found in November 2020. Keeping only the
+    corrected numbers would make the file look like it was right the first
+    time.
+    """
+    audit = cfg.OBSERVED["window_audit"]
+    pooled = audit["pooled_window_values"]
+
+    assert cfg.OBSERVED["window"]["start"] == "2020-12-01"
+    assert pooled["window"].startswith("2020-11-01")
+
+    # the cart rate is the quantity the break contaminated
+    assert pooled["primary_metric_rate"] > cfg.PRIMARY_METRIC_RATE, \
+        "the restriction lowered the cart rate; if that reverses, re-check"
+
+    # both ICCs should have moved less than a standard error (~0.008)
+    assert abs(pooled["session_conversion_icc"] - cfg.OBSERVED_ICC) < 0.02
+    assert abs(pooled["contrast_metric_icc"] - cfg.CONTRAST_METRIC_ICC) < 0.02

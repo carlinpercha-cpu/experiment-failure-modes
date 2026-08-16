@@ -2,7 +2,7 @@
   "n_sims": 10000,
   "calibrated": true,
   "calibration_source": "ga4",
-  "baseline_conversion": 0.013461842839649126,
-  "daily_users": 3469,
+  "baseline_conversion": 0.01281,
+  "daily_users": 3632,
   "seed": 20260815
 }

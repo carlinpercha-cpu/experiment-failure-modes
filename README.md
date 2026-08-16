@@ -58,10 +58,17 @@ conditions on the actual session distribution — which matters, because ρ
 demonstrably varies with engagement depth for one of the two metrics
 (purchase: +0.032 → +0.047 across n = 2, 3, 4).
 
-**Registered after correction:** `add_to_cart` ρ = +0.188 (flat across strata),
-design effect 1.357, naive SE **16.5% too narrow**. `purchase` ρ = +0.039,
-design effect 1.074, naive SE **3.6% too narrow**. Both cluster positively; the
-contrast is a 4.5× gap in magnitude on the same users.
+**Registered after correction:** `add_to_cart` ρ = +0.192 (flat across strata),
+design effect 1.365, naive SE **17.0% too narrow**. `purchase` ρ = +0.031,
+design effect 1.059, naive SE **2.9% too narrow**. Both cluster positively; the
+contrast is a 6× gap in magnitude on the same users.
+
+**A level shift moves a rate and leaves a correlation alone.** Re-measuring on
+the clean window changed the `add_to_cart` rate by −23.5% but moved both ICCs
+by less than one standard error (+0.188 → +0.192, +0.039 → +0.031). Within-user
+correlation turns out to be robust to instrumentation breaks in a way that
+levels are not — useful to know before deciding which historical numbers a
+calibration can safely reuse.
 
 **Both corrections work, and both are expensive.** O'Brien–Fleming alpha
 spending held the false-positive rate at or below nominal under every schedule
@@ -78,9 +85,9 @@ showed power peaks near 20% of baseline and falls off in both directions, while
 until it worked" and "the method is robust" are different claims.
 
 **The naive session-level standard error loses coverage exactly where it
-matters.** At `add_to_cart`'s calibrated ICC of +0.188, A/A coverage of the
-nominal 95% CI falls to 91.5% and Type I error runs at 8.5% — the delta method
-holds 94.8%. At ICC = 0.5 naive coverage drops to 88.7%. Adding a correlation
+matters.** At `add_to_cart`'s calibrated ICC of +0.192, A/A coverage of the
+nominal 95% CI falls to 93.0% and Type I error runs at 7.0% — the delta method
+holds 94.7%. At ICC = 0.5 naive coverage drops to 90.3%. Adding a correlation
 between a user's session count and their conversion propensity makes it worse
 still: 82.5% coverage at ICC = 0.5, a Type I error of 17.5%.
 
@@ -111,14 +118,21 @@ GA4-calibrated baseline (1.35% session conversion, 3,469 daily users).*
 
 | Parameter | Placeholder | Measured on GA4 |
 |---|---|---|
-| Session conversion (all sessions) | 0.0200 | **0.0135** |
-| Daily users | 4,000 | **3,469** |
-| Sessions per user | 1.60 | **1.33** |
-| Count dispersion (var/mean) | 1.20 | **0.75** (underdispersed) |
+| Session conversion (all sessions) | 0.0200 | **0.0128** |
+| Daily users | 4,000 | **3,632** |
+| Sessions per user | 1.60 | **1.29** |
+| Count dispersion (var/mean) | 1.20 | **0.63** (underdispersed) |
 | CUPED ρ | 0.40 | **0.19** |
 | Users with no pre-period | — | **96.6%** |
-| ICC, `add_to_cart`/session | 0.10 | **+0.188** (ANOVA said +0.126) |
-| ICC, `purchase`/session | — | **+0.039** (ANOVA said −0.039) |
+| `add_to_cart` rate | — | **0.0516** |
+| ICC, `add_to_cart`/session | 0.10 | **+0.192** (ANOVA said +0.126) |
+| ICC, `purchase`/session | — | **+0.031** (ANOVA said −0.039) |
+
+Measured on the **clean window**, 2020-12-01 to 2021-01-31. The full 92-day
+window is contaminated — `add_to_cart` did not fire reliably in November 2020,
+and pooling would carry a cart rate 23.5% too high. The break was found by a
+month-by-device split in the companion repo; the pooled values are retained in
+`observed_params.json` under `window_audit` rather than deleted.
 
 At this traffic a two-week 50/50 test detects a **21.8% relative lift** at 80%
 power; four weeks gets to 15.4%. That is the honest answer to "how long should
@@ -197,7 +211,7 @@ python -m sim.run_m3 --calibrated
 | Module | Prediction | Result |
 |---|---|---|
 | M1 P1 | Fixed horizon recovers nominal α | held (0.053) |
-| M1 P2–P3 | FPR rises monotonically; daily > 0.12 | held (0.227) |
+| M1 P2–P3 | FPR rises monotonically; daily > 0.12 | held (0.226) |
 | M1 P4–P5 | Both corrections hold α ≤ 0.05 | held |
 | M1 P6 | Corrections cost power | held (0.24 → 0.21, 0.13) |
 | M2 P1 | Realized reduction tracks 1−ρ² within 2pp | held (max gap 0.0004) |
@@ -234,6 +248,11 @@ python -m sim.run_m3 --calibrated
 - The CUPED coverage result is specific to anonymous, acquisition-heavy
   traffic over a holiday window; it is a claim about this user base, not about
   the method.
+- CUPED's ρ and no-pre-period share are computed from a pre/post split that
+  requires the November data as the pre period, so they are carried over from
+  the pooled window. They derive from event counts rather than `add_to_cart`
+  specifically, so the instrumentation break does not contaminate them — but
+  they are the one pair of parameters not re-measured on the clean window.
 - M3 part A uses 600 replicates per cell, so coverage estimates carry a Monte
   Carlo SE of about 0.9pp. Individual cells move; the monotone trend is the
   result, not any single number.
